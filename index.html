@@ -1,0 +1,151 @@
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>City Quest</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-family: sans-serif;
+      color: white;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+    }
+    body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image: linear-gradient(to bottom, rgba(0,0,0,0) 20%, rgba(0,0,0,0.9)), url("city-map-v2.webp");
+    background-size: cover;
+    background-position: center;
+    opacity: 0.8;
+    z-index: -1;
+    }
+
+    h1 {
+        font-family: 'Fredoka', sans-serif;
+        font-size: 76px;
+        margin-top: 30px;
+        animation: dropIn 0.8s ease-out;
+    }
+    #tagline {
+        max-width: 700px;
+        text-wrap: balance;
+        margin-bottom: 36px;
+        line-height: 1.4;
+    }
+    @keyframes dropIn {
+        from { transform: translateY(-40px); opacity: 0; }
+        to   { transform: translateY(0); opacity: 1; }
+    }
+    #tagline span {
+        font-size: 32px;
+        font-weight: bold;
+        border-radius: 12px;
+        padding: 0px 4px;
+        opacity: 0;
+        display: inline-block;
+        animation: wordIn 0.2s ease forwards;
+        animation-delay: calc(var(--i) * 0.09s);
+    }
+    #cta {
+        margin: 0 0 40px;
+        opacity: 0;
+        animation: wordIn 0.5s ease forwards;
+        animation-delay: 1.5s;
+    }
+    #cta .cta-main {
+        display: block;
+        font-size: 26px;
+        font-weight: normal;
+    }
+    #cta .cta-level {
+        display: block;
+        margin-top: 14px;
+        font-family: 'Fredoka', sans-serif;
+        font-size: 44px;
+        color: #ffb347;
+    }
+    @keyframes wordIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    #buttons {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 48px;
+    }
+    .btn {
+      display: inline-block;
+      font-family: 'Fredoka', sans-serif;
+      font-size: 26px;
+      text-decoration: none;
+      padding: 18px 48px;
+      border-radius: 20px;
+      background: linear-gradient(to bottom, #ffb347, #ff8c00);
+      color: white;
+      text-shadow: 0 2px 2px rgba(0,0,0,0.25);
+      box-shadow: 0 6px 0 #c76a00, 0 10px 16px rgba(0,0,0,0.35);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    }
+    .btn:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 12px 0 #c76a00, 0 18px 24px rgba(0,0,0,0.4);
+      filter: brightness(1.08);
+    }
+    .btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #c76a00, 0 4px 8px rgba(0,0,0,0.3);
+    }
+    .btn:focus-visible {
+      outline: 4px solid white;
+      outline-offset: 4px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .btn { transition: none; }
+      .btn:hover { transform: none; }
+    }
+    #buttons p {
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      text-shadow: none;
+      background: rgba(255,255,255,0.85);
+      border-radius: 12px;
+      margin-top: 22px;
+      padding: 4px 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>City Quest</h1>
+  <p id="tagline">
+    <span style="--i:1">Learn</span> <span style="--i:2">about</span> <span style="--i:3">the</span> <span style="--i:4">city</span> <span style="--i:5">and</span> <span style="--i:6">the</span> <span style="--i:7">people</span> <span style="--i:8">behind</span> <span style="--i:9">it,</span> <span style="--i:10">in</span> <span style="--i:11">a</span> <span style="--i:12">fun,</span> <span style="--i:13">interactive</span> <span style="--i:14">way.</span>
+  </p>
+  <p id="cta">
+    <span class="cta-main">Ready to become a great citizen?</span>
+    <span class="cta-level">Pick your level!</span>
+  </p>
+  
+  <div id="buttons">
+    <div>
+      <a class="btn" href="explorer.html">Explorer</a>
+      <p>ages 5 to 10</p>
+    </div>
+    <div>
+      <a class="btn" href="pathfinder.html">Pathfinder</a>
+      <p>ages 11 to 14</p>
+    </div>
+  </div>
+</body>
+</html>
+
+

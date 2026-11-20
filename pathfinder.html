@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>City Quest</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root { --ink:#1b2438; --paper:#f7f9fc; --accent:#3fa7ff; --good:#1f9d55; --bad:#d64545; --warn:#e8a317; --muted:#5b6578; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI", system-ui, -apple-system, sans-serif; color:var(--ink); }
+    #map { height:100vh; background:#20304a; }
+    button { font-family:inherit; cursor:pointer; }
+
+    /* top bar */
+    #bar { position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:1000; display:flex; gap:4px; align-items:center; flex-wrap:wrap; justify-content:center;
+           background:rgba(247,249,252,.97); border:2px solid var(--ink); border-radius:14px; padding:6px 8px; box-shadow:0 4px 14px rgba(0,0,0,.35); max-width:97vw; }
+    #bar button { border:none; background:transparent; border-radius:8px; font-size:14px; font-weight:600; padding:7px 10px; color:var(--ink); }
+    #bar button:hover { background:#dbeafe; }
+    #bar button.on { background:var(--ink); color:#fff; }
+    #rank { font-size:13px; font-weight:600; padding:0 8px; border-left:2px solid #d3dae6; white-space:nowrap; }
+    #rank small { display:block; font-weight:400; color:var(--muted); }
+
+    /* pins */
+    .pin { width:34px; height:34px; margin:-17px 0 0 -17px; border-radius:50%; background:var(--c); border:3px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.6);
+           display:flex; align-items:center; justify-content:center; font-size:17px; position:relative; transition:transform .15s; }
+    .pin:hover { transform:scale(1.25); }
+    .pin.visited::after { content:"✓"; position:absolute; right:-7px; top:-7px; background:var(--good); color:#fff; font-size:11px; font-weight:bold; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
+    .quiz .pin.visited::after { display:none; }
+    .quiz .leaflet-tooltip { display:none; }
+    .leaflet-tooltip.lbl { font-weight:600; font-size:13px; border:2px solid var(--ink); border-radius:8px; background:var(--paper); color:var(--ink); }
+    .ring { width:90px; height:90px; margin:-45px 0 0 -45px; border-radius:50%; border:5px solid #ffd43b; animation:pulse 1s ease-out infinite; pointer-events:none; }
+    @keyframes pulse { from { transform:scale(.5); opacity:1; } to { transform:scale(1.5); opacity:0; } }
+    .shake { animation:shake .35s; }
+    @keyframes shake { 25% { transform:translateX(-8px);} 75% { transform:translateX(8px);} }
+
+    /* info card */
+    #card { position:fixed; z-index:1000; top:70px; left:10px; width:380px; max-height:calc(100vh - 90px); overflow:auto; background:var(--paper);
+            border:2px solid var(--ink); border-radius:12px; padding:16px; box-shadow:0 6px 18px rgba(0,0,0,.4); display:none; }
+    #card h2 { margin:0 0 6px; font-size:21px; }
+    .tag { display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; background:var(--c,#555); color:#fff; margin:0 4px 6px 0; letter-spacing:.03em; }
+    .tag.lvl { background:var(--ink); }
+    #card h4 { margin:12px 0 3px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#2f6db5; }
+    #card p, #card li { margin:0; line-height:1.45; font-size:14px; }
+    #card ul { margin:0; padding-left:18px; }
+    .think { background:#fff6d6; border-left:4px solid var(--warn); padding:8px 10px; border-radius:6px; margin-top:12px; font-size:14px; }
+    .share { height:8px; background:#dde4ef; border-radius:5px; overflow:hidden; margin-top:5px; }
+    .share i { display:block; height:100%; background:var(--accent); }
+    .row { display:flex; gap:6px; margin-top:12px; flex-wrap:wrap; }
+    .btn { border:2px solid var(--ink); background:var(--accent); border-radius:8px; padding:8px 14px; font-size:14px; font-weight:700; color:#fff; }
+    .btn:hover { filter:brightness(1.08); }
+    .btn.alt { background:#fff; color:var(--ink); }
+    .btn.good { background:#d9f5e3; color:var(--ink); } .btn.bad { background:#fddede; color:var(--ink); }
+    .btn:disabled { opacity:.45; cursor:default; }
+    .x { position:absolute; top:8px; right:10px; background:none; border:none; font-size:20px; color:var(--ink); }
+
+    /* HUD */
+    #hud { position:fixed; z-index:1000; bottom:14px; left:50%; transform:translateX(-50%); width:min(640px, 95vw); background:var(--paper); border:2px solid var(--ink);
+           border-radius:12px; padding:14px 16px; box-shadow:0 6px 18px rgba(0,0,0,.45); display:none; max-height:60vh; overflow:auto; }
+    #hud .top { display:flex; justify-content:space-between; font-weight:700; font-size:13px; color:#2f6db5; }
+    #hud .q { font-size:17px; margin:8px 0; line-height:1.4; }
+    #hud .fb { min-height:20px; font-size:14px; line-height:1.4; margin-top:6px; }
+    .opts { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:6px; margin-top:6px; }
+    .opts .btn { background:#fff; color:var(--ink); text-align:left; font-weight:600; }
+    .opts .btn:hover { background:#e6f1ff; }
+    .prog { height:6px; background:#dde4ef; border-radius:4px; overflow:hidden; margin-top:4px; }
+    .prog i { display:block; height:100%; background:var(--good); transition:width .3s; }
+
+    /* modal */
+    #modal { position:fixed; inset:0; z-index:2000; background:rgba(10,16,30,.7); display:none; align-items:center; justify-content:center; padding:12px; }
+    #modal .box { background:var(--paper); border:2px solid var(--ink); border-radius:14px; padding:22px; width:min(780px, 100%); max-height:94vh; overflow:auto; }
+    #modal h2 { margin-top:0; } #modal h3 { margin:16px 0 6px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; margin:10px 0; }
+    .grid .btn { font-size:13px; padding:10px 8px; text-align:center; }
+    .scen { font-size:18px; line-height:1.45; margin:10px 0; }
+    .help { font-size:13px; color:var(--muted); }
+    .big { font-size:42px; text-align:center; }
+    .meters { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:6px 14px; margin:10px 0; }
+    .meter .lbl { display:flex; justify-content:space-between; font-weight:600; font-size:13px; }
+    .meter .bar { height:12px; background:#dde4ef; border-radius:8px; overflow:hidden; border:1px solid #b7c2d6; }
+    .meter .bar i { display:block; height:100%; transition:width .4s; }
+    .opt { display:block; width:100%; text-align:left; background:#fff; border:2px solid #b7c2d6; border-radius:10px; padding:10px 12px; margin:6px 0; font-size:14px; line-height:1.4; color:var(--ink); }
+    .opt:hover:not(:disabled) { border-color:var(--accent); background:#eef6ff; }
+    .opt.picked { border-color:var(--ink); background:#e6f1ff; }
+    .effects span { display:inline-block; font-size:12px; font-weight:700; padding:2px 7px; border-radius:10px; margin:2px 3px 0 0; }
+    .effects .up { background:#d9f5e3; color:#13663a; } .effects .down { background:#fddede; color:#8c2020; }
+    table.lv { border-collapse:collapse; width:100%; font-size:13px; margin:6px 0; }
+    table.lv th, table.lv td { border:1px solid #c7d0df; padding:6px 8px; text-align:left; vertical-align:top; }
+    table.lv th { background:#e8eef8; }
+    .order { counter-reset:o; }
+    .order .opt::before { content:attr(data-n); display:inline-block; min-width:24px; font-weight:800; color:var(--accent); }
+    .branch { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px; }
+    .branch div { border:2px solid var(--ink); border-radius:10px; padding:10px; background:#fff; font-size:13px; line-height:1.4; }
+    .branch b { display:block; font-size:15px; margin-bottom:3px; }
+    .link { color:#2f6db5; font-weight:700; cursor:pointer; text-decoration:underline; }
+    #toast { position:fixed; z-index:3000; top:76px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:9px 16px; border-radius:20px; font-weight:600; display:none; max-width:90vw; text-align:center; font-size:14px; }
+
+    @media (max-width:640px) {
+      #card { top:auto; bottom:0; left:0; right:0; width:auto; max-height:58vh; border-radius:14px 14px 0 0; }
+      #bar button { padding:6px 7px; font-size:12px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="bar" role="toolbar" aria-label="Civic Explorer modes">
+    <button id="m-explore" class="on" onclick="setMode('explore')">🗺️ Explore</button>
+    <button id="m-quiz" onclick="startQuiz()">🎯 Challenge</button>
+    <button id="m-dilemma" onclick="startDilemma()">🎩 Mayor's Desk</button>
+    <button id="m-budget" onclick="startBudget()">💰 Budget Lab</button>
+    <button id="m-law" onclick="startLaw()">📜 Make a Law</button>
+    <button id="m-gov" onclick="showGov()">🏛️ Governments</button>
+    <span id="rank"></span>
+  </div>
+  <button class="btn" style="position:fixed;bottom:16px;right:10px;z-index:1000" onclick="goHome()">🔄 Reset view</button>
+
+  <div id="card" role="dialog" aria-live="polite"></div>
+  <div id="hud"></div>
+  <div id="modal"><div class="box" id="modal-box"></div></div>
+  <div id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  /* =====================================================================
+     DATA — positions are measured from the TOP-left of the 1920x1280 picture.
+     Only places we can see in the picture have pins; edit `top` / `x` to nudge one.
+     ===================================================================== */
+  var W = 1920, H = 1280;
+  function P(top, x) { return [H - top, x]; }
+
+  var BUILDINGS = [
+    { id:"hall", name:"City Hall", emoji:"🏛️", color:"#6b7280", top:300, x:1385, level:"City", dept:"Mayor's Office & City Council",
+      what:"City Hall is where local laws (called ordinances) are made. The city council votes on rules and approves the budget, and the mayor leads the departments that carry them out.",
+      jobs:["Mayor","Council member","City manager","City clerk","Urban planner"],
+      funding:"The city's general fund: property tax, sales tax and fees.", share:7, shareNote:"Administration is usually a small slice of a city budget.",
+      rules:"Zoning (what can be built where), business permits, tax rates, noise limits.",
+      think:"If you disagreed with a council decision, what are three ways a resident could try to change it?",
+      clue:"Elected leaders here pass local ordinances and approve the yearly budget.",
+      qa:{ q:"Which group votes on the city budget?", o:["Police chief","City council","School board","County judge"], a:1, why:"The council is the legislative body of the city; it votes on budgets and ordinances." } },
+    { id:"courthouse", name:"Courthouse", emoji:"⚖️", color:"#8d6e3f", top:395, x:620, level:"County & State", dept:"Courts",
+      what:"Courts settle disputes and decide cases about crimes and civil conflicts. Judges interpret the law, and juries of ordinary citizens decide facts in many cases.",
+      jobs:["Judge","Prosecutor","Public defender","Court clerk","Bailiff"],
+      funding:"County and state taxes, plus court fees and fines.", share:5, shareNote:"Courts are usually funded by the county or state, not by the city.",
+      rules:"Constitutional rights, due process, 'innocent until proven guilty'.",
+      think:"Why is it important that judges do not take orders from the mayor or the police?",
+      clue:"Judges and juries decide disputes and criminal cases here.",
+      qa:{ q:"Which branch of government do courts belong to?", o:["Executive","Legislative","Judicial","Administrative"], a:2, why:"The judicial branch interprets laws and resolves disputes." } },
+    { id:"library", name:"Public Library", emoji:"📚", color:"#6b4fa0", top:250, x:935, level:"City / County", dept:"Library System",
+      what:"The public library gives everyone free access to books, research tools, internet and classes. It is one of the few places in a city open to everyone for free.",
+      jobs:["Librarian","Archivist","Digital literacy trainer","Children's programs coordinator"],
+      funding:"Local property taxes (sometimes a special library levy), plus grants.", share:2, shareNote:"Usually one to three percent of local spending.",
+      rules:"Open access for all residents; privacy of what you borrow.",
+      think:"Information is online. Is a library still worth paying for? Who benefits most?",
+      clue:"Free books, computers and research help are offered to everyone here.",
+      qa:{ q:"Why are libraries considered a 'public good'?", o:["They make a profit","Everyone can use them regardless of income","Only voters can enter","They are run by the national government"], a:1, why:"Public goods are open to everyone and paid for collectively through taxes." } },
+    { id:"voting", name:"Elections Center", emoji:"🗳️", color:"#2f6fb0", top:410, x:1000, level:"County & City", dept:"Elections Office",
+      what:"The elections office registers voters, runs polling places, and counts ballots. Local elections choose the mayor, council, school board, and decide ballot measures like new taxes.",
+      jobs:["Election official","Poll worker","Voter registrar","Ballot-system technician"],
+      funding:"County and city taxes, plus state funds.", share:1, shareNote:"A tiny share, but critical for democracy.",
+      rules:"Voter registration deadlines, secret ballot, identification rules (set by state law).",
+      think:"Local elections often have low turnout. How does that change who gets heard?",
+      clue:"Ballots are registered, protected and counted here.",
+      qa:{ q:"Which kinds of decisions are often on a LOCAL ballot?", o:["Mayor and school board","Declaring war","Printing money","Treaties"], a:0, why:"Local ballots usually include mayors, councils, school boards and local tax measures." } },
+    { id:"police", name:"Police Station", emoji:"🚓", color:"#3a5a98", top:270, x:410, level:"City", dept:"Police Department",
+      what:"The police department responds to emergencies, enforces laws and investigates crimes. The chief reports to the mayor or city manager, so elected leaders and residents have oversight.",
+      jobs:["Patrol officer","Detective","911 dispatcher","Forensic analyst","Community liaison"],
+      funding:"The city's general fund (property and sales taxes).", share:25, shareNote:"Public safety is often the biggest part of a city's general fund.",
+      rules:"Traffic laws, noise ordinances, criminal law. Officers must follow constitutional limits on searches.",
+      think:"Is it better to spend more on patrols or on prevention like youth programs? What are the tradeoffs?",
+      clue:"Officers here answer 911 calls and investigate crimes.",
+      qa:{ q:"Who does the police chief answer to?", o:["The mayor or city manager","The governor only","The school board","Nobody"], a:0, why:"In most cities the police are part of the executive branch and answer to the mayor/city manager." } },
+    { id:"fire", name:"Fire & Rescue", emoji:"🚒", color:"#c1272d", top:530, x:1480, level:"City", dept:"Fire Department",
+      what:"Fire departments fight fires, but most calls are medical emergencies. They also inspect buildings, teach fire safety and respond to disasters.",
+      jobs:["Firefighter","Paramedic","Fire inspector","Fire chief"],
+      funding:"The city's general fund, sometimes a dedicated fire levy.", share:13, shareNote:"Most calls are medical, not fires.",
+      rules:"Fire codes: smoke alarms, exits, sprinklers and occupancy limits.",
+      think:"Why do inspectors check buildings before any fire happens? Who benefits from prevention?",
+      clue:"Crews here respond to fires and medical emergencies.",
+      qa:{ q:"What do most fire department calls involve?", o:["Wildfires","Medical emergencies","Burglaries","Traffic tickets"], a:1, why:"Across the US, a majority of calls are for medical emergencies." } },
+    { id:"hospital", name:"Public Hospital", emoji:"🏥", color:"#2a9d8f", top:920, x:420, level:"County & City", dept:"Public Health",
+      what:"Public hospitals and clinics treat everyone, including people who can't afford care. Public health departments also track disease, run vaccinations and inspect restaurants.",
+      jobs:["Doctor","Nurse","Paramedic","Epidemiologist","Health inspector"],
+      funding:"Patient payments, insurance, Medicare/Medicaid, and county or city taxes.", share:9, shareNote:"Mostly paid for by insurance and federal programs, topped up by local taxes.",
+      rules:"School vaccination requirements, restaurant inspections, quarantine rules.",
+      think:"Should a city pay for health care for people who can't afford it? What would you consider?",
+      clue:"Doctors and nurses treat patients here, and health officials track disease.",
+      qa:{ q:"What does a public health department do?", o:["Collect taxes","Track disease and inspect food safety","Run elections","Maintain roads"], a:1, why:"Public health protects whole communities, not just individual patients." } },
+    { id:"elementary", name:"Elementary School", emoji:"🏫", color:"#d98a1b", top:720, x:470, level:"School district (local)", dept:"School District",
+      what:"Public schools are run by a local school district with an elected school board. The district hires teachers, sets the calendar and budget, and follows state education standards.",
+      jobs:["Teacher","Principal","School counselor","Bus driver","School board member (elected)"],
+      funding:"Local property taxes, state aid and federal grants.", share:0, shareNote:"School districts usually have their own budget, separate from the city's.",
+      rules:"State learning standards, compulsory attendance laws, federal disability-access law.",
+      think:"Many schools are funded by property taxes. Is that fair for neighborhoods with different property values?",
+      clue:"Kids learn here, and a locally elected board oversees the district.",
+      qa:{ q:"Who governs a public school district?", o:["An elected school board","The mayor alone","The police","The post office"], a:0, why:"School boards are usually elected locally and set district policy." } },
+    { id:"highschool", name:"High School", emoji:"🎓", color:"#b5532e", top:410, x:150, level:"School district (local)", dept:"School District",
+      what:"High schools prepare students for college, work and citizenship. They offer sports, clubs and career-technical programs.",
+      jobs:["Teacher","Coach","Career counselor","Principal","Athletic director"],
+      funding:"Property taxes, state aid and federal grants.", share:0, shareNote:"Funded through the school district's budget.",
+      rules:"Graduation requirements set by the state; student-conduct policies set by the board.",
+      think:"Should students have a voice on the school board? How could that work?",
+      clue:"Teens prepare for college and careers here, with sports fields next door.",
+      qa:{ q:"Which levels of government typically fund public schools?", o:["Local, state and federal","Only the city","Only the federal government","Only private donors"], a:0, why:"School funding is a mix of local property tax, state aid and federal grants." } },
+    { id:"parks", name:"Central Park", emoji:"🌳", color:"#3f9b4f", top:650, x:860, level:"City", dept:"Parks & Recreation",
+      what:"The parks department maintains parks, playgrounds, trails and recreation programs. Green space improves health, cools neighborhoods and brings people together.",
+      jobs:["Park planner","Ranger","Arborist","Recreation coordinator","Landscape architect"],
+      funding:"General fund, user fees and grants.", share:4, shareNote:"Often cut first in a tight budget, even though parks have lasting benefits.",
+      rules:"Park hours, leash laws, permits for events.",
+      think:"If budgets are tight, should parks or road repairs come first? Who decides?",
+      clue:"A playground, trees and open space are managed here by the city.",
+      qa:{ q:"Which is an example of a long-term benefit of parks?", o:["Cooler neighborhoods and better health","Lower income tax","Faster mail delivery","Fewer elections"], a:0, why:"Trees and green space reduce heat and encourage exercise." } },
+    { id:"sports", name:"Sports Complex", emoji:"🏟️", color:"#1d8f6f", top:1180, x:680, level:"City", dept:"Parks & Recreation",
+      what:"City-owned sports fields and tracks give residents a place to play. Cities decide whether to charge fees or keep them free, and who gets priority use.",
+      jobs:["Facility manager","Coach","Groundskeeper","Event scheduler"],
+      funding:"General fund and field-rental fees.", share:2, shareNote:"Fees can cover part of the cost, but access for everyone matters.",
+      rules:"Facility use permits and safety rules.",
+      think:"Should access to city sports facilities be free for residents, or should users pay fees?",
+      clue:"A track, ball fields and bleachers owned by the city.",
+      qa:{ q:"Why might a city charge user fees for sports fields?", o:["To cover part of the cost without raising taxes","Because the law requires it","To stop people from voting","To pay for the post office"], a:0, why:"User fees shift part of the cost to those who use the service." } },
+    { id:"sanitation", name:"Sanitation Yard", emoji:"🚛", color:"#5f7a4a", top:960, x:1400, level:"City", dept:"Sanitation Department",
+      what:"Sanitation workers collect trash and recycling and run programs to reduce waste. Landfills and recycling plants are major environmental and cost decisions for a city.",
+      jobs:["Collection driver","Recycling coordinator","Landfill engineer","Environmental specialist"],
+      funding:"Monthly fees paid by households and businesses, plus the general fund.", share:6, shareNote:"Often funded by fees (like a utility bill) rather than taxes.",
+      rules:"Recycling rules, litter fines, bulk-pickup schedules.",
+      think:"Would charging households per bag of trash reduce waste? Is that fair to big families?",
+      clue:"Trucks collect garbage and recycling from this fenced yard.",
+      qa:{ q:"How are trash services often paid for?", o:["Monthly fees from users","Only federal grants","Lottery winnings","Voluntary donations"], a:0, why:"Many cities charge a utility-style fee for garbage collection." } },
+    { id:"publicworks", name:"Public Works Depot", emoji:"🚧", color:"#e08a00", top:960, x:1790, level:"City", dept:"Public Works",
+      what:"Public Works builds and maintains roads, bridges, sidewalks, water pipes and storm drains, and plows snow. Their work is mostly invisible until something breaks.",
+      jobs:["Civil engineer","Road crew","Plow driver","Surveyor","Water-system operator"],
+      funding:"Fuel taxes, utility fees, state and federal grants, and the general fund.", share:15, shareNote:"Infrastructure is a huge, long-term cost.",
+      rules:"Building and street standards, utility regulations.",
+      think:"How should a city decide which road or pipe to repair first when money is limited?",
+      clue:"Crews with plows and repair trucks keep roads, bridges and pipes working.",
+      qa:{ q:"What is 'infrastructure'?", o:["Roads, bridges, pipes and power lines","The mayor's staff","Court cases","Tax forms"], a:0, why:"Infrastructure is the basic physical systems a community depends on." } },
+    { id:"transit", name:"Bus Depot", emoji:"🚌", color:"#8a3ffc", top:670, x:1750, level:"City / Regional", dept:"Transit Authority",
+      what:"Public transit moves people without every trip needing a car. Transit agencies plan routes, set fares and balance costs with how many people ride.",
+      jobs:["Bus operator","Route planner","Mechanic","Dispatcher","Accessibility coordinator"],
+      funding:"Fares (often 20–30%), local taxes, and state and federal grants.", share:5, shareNote:"Fares rarely cover the full cost, so taxes help.",
+      rules:"Accessibility laws, safety rules for drivers.",
+      think:"Who benefits from public transit even if they never ride a bus?",
+      clue:"A lot of buses are parked and maintained here.",
+      qa:{ q:"Why do fares usually NOT cover the full cost of transit?", o:["Routes cost more than riders can pay, so taxes help","Buses are free by law","Fares are illegal","Drivers work for free"], a:0, why:"Transit is treated as a public service that benefits the whole community." } },
+    { id:"post", name:"Post Office / Mail Center", emoji:"📮", color:"#1f5fae", top:420, x:1690, level:"Federal (national)", dept:"US Postal Service",
+      what:"The Postal Service delivers mail across the whole country. It is an independent agency of the federal government, and it funds itself mostly through postage, not tax dollars.",
+      jobs:["Mail carrier","Postal clerk","Logistics planner","Mail sorter"],
+      funding:"Postage and shipping fees (not usually taxes).", share:0, shareNote:"It isn't part of the city budget at all.",
+      rules:"Federal law protects mail; the Constitution lets Congress create post offices.",
+      think:"Why is a national postal service run by the federal government instead of each city?",
+      clue:"Mail is sorted here by a federal agency, not by the city.",
+      qa:{ q:"Which level of government runs the Postal Service?", o:["Federal","City","County","School district"], a:0, why:"The Postal Service is a federal agency with delivery across the entire nation." } }
+  ];
+  // places in the picture that are NOT government, used in "government or private?" questions
+  var PRIVATE = [
+    { id:"shops", name:"Main Street Shops", emoji:"🏪", top:85, x:1350, fact:"Shops are private businesses. They pay taxes, and need permits from the city." },
+    { id:"homes", name:"Neighborhood Homes", emoji:"🏠", top:1130, x:1000, fact:"Homes are private. Owners pay property taxes that fund local services." },
+    { id:"carlot", name:"Car Dealership", emoji:"🚗", top:230, x:1760, fact:"A car lot is a private business. It pays sales and property taxes." }
+  ];
+  var byId = {}; BUILDINGS.concat(PRIVATE).forEach(function (b) { byId[b.id] = b; });
+
+  var GROUPS = [
+    { name:"Public Safety", ids:["police","fire"] }, { name:"Health", ids:["hospital"] }, { name:"Education & Learning", ids:["elementary","highschool","library"] },
+    { name:"Parks & Recreation", ids:["parks","sports"] }, { name:"Infrastructure & Environment", ids:["publicworks","sanitation","transit"] },
+    { name:"Government & Justice", ids:["hall","voting","courthouse"] }, { name:"Federal services in town", ids:["post"] }
+  ];
+
+  var LEVEL_ITEMS = [
+    { t:"Collecting household garbage", a:"City", why:"Sanitation is a classic local service." },
+    { t:"Delivering mail to every address", a:"Federal", why:"The Postal Service is a national agency." },
+    { t:"Issuing driver's licenses", a:"State", why:"States license drivers and register vehicles." },
+    { t:"Zoning: deciding where a shop can be built", a:"City", why:"Cities control local land use." },
+    { t:"Running elections and counting ballots locally", a:"County", why:"County election offices usually run the process (rules come from the state)." },
+    { t:"Printing money and running national defense", a:"Federal", why:"Only the national government does these." },
+    { t:"Operating public universities (state universities)", a:"State", why:"State governments fund and govern their universities." },
+    { t:"Fire protection and ambulance response", a:"City", why:"Local fire departments respond to emergencies." },
+    { t:"Issuing passports", a:"Federal", why:"Passports are issued by the US State Department." },
+    { t:"Trials for most local crimes", a:"County", why:"County courts hear many local cases (under state law)." },
+    { t:"Snow plowing city streets", a:"City", why:"Public Works handles city streets." },
+    { t:"Setting minimum education standards for all schools in a state", a:"State", why:"States set education standards; local districts carry them out." }
+  ];
+
+  var DILEMMAS = [
+    { t:"💵 The city has an unexpected $5 million surplus. Residents disagree about how to use it.", opts:[
+      { l:"Hire more police officers", fx:{safety:15, budget:-10, trust:2}, r:"Response times improve, but this adds a permanent salary cost each year." },
+      { l:"Open a neighborhood health clinic", fx:{health:15, budget:-8, trust:6}, r:"More families get care, and ongoing costs are covered partly by insurance." },
+      { l:"Repair school buildings and the library", fx:{learning:15, budget:-8, trust:5}, r:"Learning conditions improve; effects take years to show." },
+      { l:"Save it in the reserve fund", fx:{budget:15, trust:-6}, r:"The city is prepared for emergencies, but some residents feel their needs were ignored." } ] },
+    { t:"🏭 A company wants to build a factory with 500 jobs next to a river. It may pollute.", opts:[
+      { l:"Approve it quickly", fx:{budget:12, trust:-4, health:-12, green:-15}, r:"Jobs and tax revenue arrive, but the river suffers and some residents protest." },
+      { l:"Approve it with strict pollution limits and inspectors", fx:{budget:6, health:-2, green:-4, trust:6}, r:"A balanced outcome. Inspections cost money, but the community is protected." },
+      { l:"Reject it", fx:{green:10, health:6, budget:-6, trust:-3}, r:"The river is protected, but the city loses jobs and tax income." } ] },
+    { t:"🚌 Bus ridership has dropped and the transit system is losing money.", opts:[
+      { l:"Cut the least-used routes", fx:{budget:10, trust:-8, green:-5}, r:"The budget improves, but people without cars lose access to work and school." },
+      { l:"Raise fares", fx:{budget:6, trust:-6}, r:"Some money comes in, but lower-income riders are hit hardest." },
+      { l:"Use tax money to keep service and add frequency", fx:{budget:-12, trust:8, green:8}, r:"More people ride, and there are fewer cars, but taxpayers pay more." } ] },
+    { t:"🌡️ A heat wave is forecast for a week, with temperatures over 40°C (104°F).", opts:[
+      { l:"Open cooling centers in libraries and community buildings", fx:{health:12, budget:-6, trust:6}, r:"Vulnerable residents get relief, with a small cost to the city." },
+      { l:"Send alerts and rely on residents to manage", fx:{health:-8, budget:2, trust:-5}, r:"Cheap, but elderly and low-income residents are at risk." },
+      { l:"Plant trees and build shade in the long term", fx:{green:12, health:5, budget:-10}, r:"A lasting solution, but not much help this week." } ] },
+    { t:"🗑️ The landfill will be full in 8 years.", opts:[
+      { l:"Start a recycling and composting program", fx:{green:14, budget:-7, trust:3}, r:"Waste drops over time, but the program needs education and funds." },
+      { l:"Charge households for each bag of trash", fx:{green:10, budget:6, trust:-6}, r:"Waste drops quickly, but large families complain about fairness." },
+      { l:"Buy land for a bigger landfill", fx:{green:-12, budget:-8, trust:-3}, r:"This delays the problem, and nearby residents object." } ] },
+    { t:"🚨 Crime is rising downtown.", opts:[
+      { l:"Add police patrols", fx:{safety:12, budget:-8, trust:-2}, r:"Visible patrols deter some crime, with high ongoing cost." },
+      { l:"Add street lighting and youth programs", fx:{safety:8, learning:6, budget:-7, trust:6}, r:"Prevention works more slowly, but benefits the community more broadly." },
+      { l:"Install surveillance cameras", fx:{safety:7, budget:-5, trust:-8}, r:"Cameras help investigations, but many residents worry about privacy." } ] },
+    { t:"🏫 A new housing area made the elementary school overcrowded.", opts:[
+      { l:"Build a new school (borrow money with a bond)", fx:{learning:16, budget:-14, trust:4}, r:"Long-term fix, but residents will repay the bond through taxes." },
+      { l:"Add temporary portable classrooms", fx:{learning:4, budget:-4, trust:-3}, r:"A cheap, short-term fix. Classrooms feel crowded." },
+      { l:"Redraw school boundaries", fx:{learning:6, trust:-9}, r:"Costs little, but upsets families who must change schools." } ] },
+    { t:"🌧️ Weather forecasters warn of the biggest storm in 20 years. Storm drains are old.", opts:[
+      { l:"Spend on emergency repairs right now", fx:{safety:10, health:4, budget:-10, trust:5}, r:"Flooding is limited, and the cost was worth it." },
+      { l:"Wait; hope the storm is weaker", fx:{safety:-14, health:-8, budget:3, trust:-12}, r:"Severe flooding damages homes and the city pays much more in recovery." },
+      { l:"Hand out sandbags and open shelters", fx:{safety:5, budget:-4, trust:2}, r:"Residents are somewhat protected, but drains remain a risk." } ] }
+  ];
+  var METERS = [["safety","🛡️ Safety","#3a5a98"],["health","💚 Health","#2a9d8f"],["learning","🎓 Learning","#d98a1b"],["green","🌿 Environment","#3f9b4f"],["budget","💰 City budget","#6b7280"],["trust","🤝 Public trust","#8a3ffc"]];
+
+  var BUDGET_CATS = [
+    { id:"safety", name:"🛡️ Public safety (police & fire)", need:36 }, { id:"health", name:"💚 Health", need:14 },
+    { id:"learning", name:"🎓 Libraries & learning", need:8 }, { id:"works", name:"🚧 Roads, water & sanitation", need:30 },
+    { id:"parks", name:"🌳 Parks & recreation", need:8 }, { id:"admin", name:"🏛️ Government & courts", need:12 }
+  ];
+  var BUDGET_EVENTS = [
+    { t:"❄️ A harsh winter: roads and pipes need extra work.", need:{ works:+12 } },
+    { t:"🦠 A flu outbreak overwhelms clinics.", need:{ health:+8 } },
+    { t:"🌳 The population grows, so there is more demand for safety services.", need:{ safety:+10 } },
+    { t:"📚 Residents vote to expand library hours and programs.", need:{ learning:+5, admin:+2 } },
+    { t:"🏗️ An old bridge is found to be unsafe.", need:{ works:+14 } }
+  ];
+
+  var LAW_STEPS = [
+    { t:"A resident, council member or the mayor proposes an idea", why:"Anyone can raise an idea, but only council members can formally introduce it." },
+    { t:"City staff and the city attorney draft the ordinance", why:"Lawyers write it clearly and make sure it follows the state and federal laws." },
+    { t:"A council committee studies it and may change it", why:"Committees look at costs, impacts and alternatives." },
+    { t:"The public gets notice and can speak at a public hearing", why:"Residents have the right to be heard before a vote." },
+    { t:"The full council debates and votes", why:"A majority vote is usually needed to pass an ordinance." },
+    { t:"The mayor signs it, or vetoes it", why:"The executive can approve or send it back; councils can sometimes override a veto." },
+    { t:"Departments enforce it, and courts can interpret it", why:"The executive carries out laws and the judicial branch resolves disputes about them." }
+  ];
+
+  /* =====================================================================
+     STATE
+     ===================================================================== */
+  var save = { visited:{}, xp:0, best:{ quiz:0, dilemma:0, budget:0, law:0 } };
+  try { var s = JSON.parse(localStorage.getItem("cityapp3")); if (s) save = Object.assign(save, s); } catch (e) {}
+  function persist() { try { localStorage.setItem("cityapp3", JSON.stringify(save)); } catch (e) {} }
+  var RANKS = [[0,"Resident"],[300,"Active Citizen"],[800,"Council Member"],[1600,"Mayor"],[3000,"Civic Legend"]];
+  function rank() { var r = RANKS[0], next = null; RANKS.forEach(function (x, i) { if (save.xp >= x[0]) { r = x; next = RANKS[i + 1]; } }); return { name:r[1], next:next }; }
+  function addXP(n) {
+    var before = rank().name; save.xp += Math.max(0, Math.round(n)); persist(); renderRank();
+    if (rank().name !== before) toast("🎖️ New rank: " + rank().name + "!", 3500);
+  }
+  function renderRank() {
+    var r = rank();
+    $("rank").innerHTML = "🎖️ " + r.name + "<small>" + save.xp + " XP" + (r.next ? " · next at " + r.next[0] : "") + " · stamps " + Object.keys(save.visited).length + "/" + BUILDINGS.length + "</small>";
+  }
+
+  var mode = "explore";
+  var $ = function (id) { return document.getElementById(id); };
+  function shuffle(a) { return a.slice().sort(function () { return Math.random() - 0.5; }); }
+  function stars(n) { return "⭐".repeat(n) + "☆".repeat(3 - n); }
+
+  /* =====================================================================
+     MAP
+     ===================================================================== */
+  var bounds = [[0, 0], [H, W]];
+  var map = L.map("map", { crs:L.CRS.Simple, minZoom:-1, maxZoom:1.5, zoomDelta:0.5, zoomSnap:0.25, wheelPxPerZoomLevel:120,
+                           maxBounds:[[-150, -150], [H + 150, W + 150]], maxBoundsViscosity:0.9 });
+  L.imageOverlay("city-map-detailed.webp", bounds).addTo(map);
+  map.fitBounds(bounds);
+  function goHome() { map.flyToBounds(bounds, { duration:0.8 }); }
+
+  BUILDINGS.forEach(function (b) {
+    var icon = L.divIcon({ className:"", html:'<div class="pin" id="pin-' + b.id + '" style="--c:' + b.color + '">' + b.emoji + "</div>", iconSize:[0,0] });
+    var m = L.marker(P(b.top, b.x), { icon:icon, keyboard:true, title:b.name }).addTo(map);
+    m.bindTooltip(b.name, { direction:"bottom", offset:[0, 16], className:"lbl" });
+    m.on("click", function () { onPin(b.id); });
+  });
+  function refreshPins() {
+    BUILDINGS.forEach(function (b) { var el = $("pin-" + b.id); if (el) el.classList.toggle("visited", !!save.visited[b.id]); });
+    renderRank();
+  }
+  refreshPins();
+
+  var ringMarker = null;
+  function pulse(id) {
+    clearRing(); var b = byId[id];
+    ringMarker = L.marker(P(b.top, b.x), { icon:L.divIcon({ className:"", html:'<div class="ring"></div>', iconSize:[0,0] }), interactive:false }).addTo(map);
+  }
+  function clearRing() { if (ringMarker) { map.removeLayer(ringMarker); ringMarker = null; } }
+  function flyTo(id) { var b = byId[id]; map.flyTo(P(b.top, b.x), 0.5, { duration:0.8 }); }
+  function toast(msg, ms) { var t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(function () { t.style.display = "none"; }, ms || 2500); }
+
+  function setMode(m) {
+    mode = m;
+    ["explore","quiz","dilemma","budget","law","gov"].forEach(function (k) { $("m-" + k).classList.toggle("on", k === m); });
+    document.body.classList.toggle("quiz", m === "quiz");
+    $("hud").style.display = "none"; closeModal(); clearRing();
+    if (m !== "explore") closeCard();
+    if (m === "explore") goHome();
+  }
+  function onPin(id) { if (mode === "quiz") return quizTap(id); if (mode === "explore") showCard(id); }
+
+  /* ---------- EXPLORE ---------- */
+  function showCard(id) {
+    var b = byId[id], c = $("card"); flyTo(id);
+    var first = !save.visited[id];
+    if (first) { save.visited[id] = true; persist(); refreshPins(); addXP(20); }
+    c.style.setProperty("--c", b.color);
+    c.innerHTML =
+      '<button class="x" onclick="closeCard()" aria-label="close">✕</button>' +
+      '<span class="tag lvl">' + b.level.toUpperCase() + '</span><span class="tag">' + b.dept + "</span>" +
+      "<h2>" + b.emoji + " " + b.name + "</h2><p>" + b.what + "</p>" +
+      "<h4>Careers</h4><ul>" + b.jobs.map(function (j) { return "<li>" + j + "</li>"; }).join("") + "</ul>" +
+      "<h4>Who pays for it</h4><p>" + b.funding + "</p>" +
+      (b.share ? '<div class="share" title="about ' + b.share + '%"><i style="width:' + Math.min(100, b.share * 3) + '%"></i></div><p class="help">≈ ' + b.share + "% of a typical city budget. " + b.shareNote + "</p>" : '<p class="help">' + b.shareNote + "</p>") +
+      "<h4>Rules it works with</h4><p>" + b.rules + "</p>" +
+      '<div class="think"><b>🤔 Think about it:</b> ' + b.think + "</div>" +
+      '<div class="row"><button class="btn alt" onclick="showGov()">Compare levels of government</button></div>';
+    c.style.display = "block"; c.scrollTop = 0;
+    if (first) { var n = Object.keys(save.visited).length; toast(n === BUILDINGS.length ? "🎉 All places visited! +20 XP each" : "New stamp +20 XP (" + n + "/" + BUILDINGS.length + ")"); }
+  }
+  function closeCard() { $("card").style.display = "none"; }
+
+  /* ---------- CHALLENGE (map + multiple choice + levels) ---------- */
+  var Q = null;
+  function startQuiz() {
+    setMode("quiz");
+    var find = shuffle(BUILDINGS).slice(0, 5).map(function (b) { return { type:"find", text:b.clue, a:b.id, why:b.name + ": " + b.what }; });
+    var mc = shuffle(BUILDINGS).slice(0, 4).map(function (b) { return { type:"mc", text:b.qa.q, o:b.qa.o, a:b.qa.a, why:b.qa.why, id:b.id }; });
+    var lv = shuffle(LEVEL_ITEMS).slice(0, 2).map(function (x) { return { type:"level", text:"Which level of government is mainly responsible for: <b>" + x.t + "</b>?", a:x.a, why:x.why }; });
+    var gv = shuffle(PRIVATE.concat(shuffle(BUILDINGS).slice(0, 2))).slice(0, 2).map(function (b) { return { type:"gov", id:b.id, gov:!!b.level, why:b.fact || b.name + " is a public service paid for by taxes or fees." }; });
+    Q = { qs:shuffle(find.concat(mc, lv, gv)), i:0, score:0, streak:0, tries:0, correct:0, locked:false };
+    goHome(); quizAsk();
+  }
+  function quizAsk() {
+    clearRing(); var q = Q.qs[Q.i]; Q.tries = 0; Q.locked = false;
+    var body = "";
+    if (q.type === "find") body = '<div class="q">📍 Find the facility: ' + q.text + '</div><div class="help">Tap it on the map. Two tries.</div>';
+    else if (q.type === "mc") body = '<div class="q">' + q.text + '</div><div class="opts">' + q.o.map(function (o, i) { return '<button class="btn" onclick="quizPick(' + i + ')">' + o + "</button>"; }).join("") + "</div>";
+    else if (q.type === "level") body = '<div class="q">' + q.text + '</div><div class="opts">' + ["City","County","State","Federal"].map(function (o) { return '<button class="btn" onclick="quizPick(\'' + o + '\')">' + o + "</button>"; }).join("") + "</div>";
+    else { flyTo(q.id); pulse(q.id); body = '<div class="q">👀 Look at the highlighted ' + byId[q.id].emoji + ". Is this a government service, or a private place?</div>" +
+      '<div class="opts"><button class="btn" onclick="quizPick(true)">🏛️ Government</button><button class="btn" onclick="quizPick(false)">🏢 Private</button></div>'; }
+    $("hud").innerHTML = '<div class="top"><span>Question ' + (Q.i + 1) + "/" + Q.qs.length + "</span><span>⭐ " + Q.score + (Q.streak > 1 ? " 🔥×" + Q.streak : "") + "</span></div>" +
+      '<div class="prog"><i style="width:' + Q.i / Q.qs.length * 100 + '%"></i></div>' + body + '<div class="fb" id="fb"></div><div class="row" id="hud-actions"><button class="btn alt" onclick="setMode(\'explore\')">Exit</button></div>';
+    $("hud").style.display = "block";
+  }
+  function quizTap(id) {
+    if (!Q || Q.locked || Q.qs[Q.i].type !== "find") return;
+    var q = Q.qs[Q.i];
+    if (id === q.a) return quizResult(true, "That's right: " + byId[id].name + ".");
+    Q.tries++; Q.streak = 0; shake();
+    if (Q.tries >= 2) { flyTo(q.a); pulse(q.a); quizResult(false, "It was the " + byId[q.a].name + "."); }
+    else { $("fb").style.color = "var(--bad)"; $("fb").textContent = "❌ That's the " + byId[id].name + ". One more try."; }
+  }
+  function quizPick(v) {
+    if (Q.locked) return; var q = Q.qs[Q.i];
+    var ok = q.type === "gov" ? v === q.gov : v === q.a;
+    var ans = q.type === "mc" ? q.o[q.a] : q.type === "gov" ? (q.gov ? "government" : "private") : q.a;
+    quizResult(ok, ok ? "Correct!" : "The answer: <b>" + ans + "</b>.");
+  }
+  function shake() { $("hud").classList.add("shake"); setTimeout(function () { $("hud").classList.remove("shake"); }, 400); }
+  function quizResult(ok, msg) {
+    var q = Q.qs[Q.i]; Q.locked = true;
+    if (ok) { var pts = 100 + Math.min(Q.streak, 4) * 25 - (Q.tries ? 40 : 0); Q.score += pts; Q.streak++; Q.correct++; msg += " +" + pts; }
+    else { Q.streak = 0; shake(); }
+    var f = $("fb"); f.style.color = ok ? "var(--good)" : "var(--bad)";
+    f.innerHTML = (ok ? "✅ " : "❌ ") + msg + "<br><span style='color:var(--ink)'>💡 " + q.why + "</span>";
+    document.querySelectorAll("#hud .opts .btn").forEach(function (b) { b.disabled = true; });
+    $("hud-actions").insertAdjacentHTML("afterbegin", '<button class="btn" onclick="quizNext()">' + (Q.i === Q.qs.length - 1 ? "Results" : "Next ➜") + "</button>");
+  }
+  function quizNext() { Q.i++; if (Q.i >= Q.qs.length) quizEnd(); else quizAsk(); }
+  function quizEnd() {
+    clearRing(); $("hud").style.display = "none";
+    var pct = Q.correct / Q.qs.length, n = pct >= 0.9 ? 3 : pct >= 0.65 ? 2 : 1, best = Q.score > save.best.quiz;
+    if (best) save.best.quiz = Q.score; addXP(Q.score / 4);
+    openModal('<div class="big">' + stars(n) + "</div><h2 style='text-align:center'>" + Q.correct + "/" + Q.qs.length + " correct · " + Q.score + " points</h2><p style='text-align:center'>" +
+      (best ? "🏆 New personal best! " : "Best: " + save.best.quiz + ". ") + "+" + Math.round(Q.score / 4) + " XP</p>" +
+      '<div class="row" style="justify-content:center"><button class="btn" onclick="startQuiz()">Play again</button><button class="btn alt" onclick="setMode(\'explore\')">Back to map</button></div>');
+  }
+
+  /* ---------- MAYOR'S DESK (policy dilemmas) ---------- */
+  var D = null;
+  function startDilemma() {
+    setMode("dilemma");
+    D = { qs:shuffle(DILEMMAS).slice(0, 5), i:0, m:{ safety:60, health:60, learning:60, green:60, budget:60, trust:60 }, picked:null };
+    dilemmaRender();
+  }
+  function metersHtml(m) {
+    return '<div class="meters">' + METERS.map(function (x) {
+      var v = Math.max(0, Math.min(100, m[x[0]]));
+      return '<div class="meter"><div class="lbl"><span>' + x[1] + "</span><span>" + Math.round(v) + '</span></div><div class="bar"><i style="width:' + v + "%;background:" + (v < 25 ? "var(--bad)" : x[2]) + '"></i></div></div>';
+    }).join("") + "</div>";
+  }
+  function dilemmaRender() {
+    var q = D.qs[D.i], done = D.picked !== null;
+    var opts = q.opts.map(function (o, i) {
+      var fx = "";
+      if (done && D.picked === i) fx = '<div class="effects">' + Object.keys(o.fx).map(function (k) { var v = o.fx[k]; var name = METERS.filter(function (m) { return m[0] === k; })[0][1]; return '<span class="' + (v >= 0 ? "up" : "down") + '">' + name + " " + (v > 0 ? "+" : "") + v + "</span>"; }).join("") + "</div><div class='help' style='margin-top:6px;color:var(--ink)'>" + o.r + "</div>";
+      return '<button class="opt ' + (D.picked === i ? "picked" : "") + '" ' + (done ? "disabled" : "") + ' onclick="dilemmaPick(' + i + ')">' + o.l + (D.picked === i ? fx : "") + "</button>";
+    }).join("");
+    openModal("<h2>🎩 Mayor's Desk <span class='help'>(decision " + (D.i + 1) + "/" + D.qs.length + ")</span></h2>" + metersHtml(D.m) +
+      "<div class='scen'>" + q.t + "</div>" + opts +
+      '<div class="row">' + (done ? '<button class="btn" onclick="dilemmaNext()">' + (D.i === D.qs.length - 1 ? "See what happened" : "Next decision ➜") + "</button>" : "") + '<button class="btn alt" onclick="setMode(\'explore\')">Exit</button></div>' +
+      (!done ? "<p class='help'>There's no perfect answer. Every choice has a cost. Keep all six meters healthy.</p>" : ""));
+  }
+  function dilemmaPick(i) {
+    var o = D.qs[D.i].opts[i]; D.picked = i;
+    Object.keys(o.fx).forEach(function (k) { D.m[k] = Math.max(0, Math.min(100, D.m[k] + o.fx[k])); });
+    dilemmaRender();
+  }
+  function dilemmaNext() { D.i++; D.picked = null; if (D.i >= D.qs.length) dilemmaEnd(); else dilemmaRender(); }
+  function dilemmaEnd() {
+    var vals = METERS.map(function (x) { return D.m[x[0]]; }), avg = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+    var low = METERS.filter(function (x) { return D.m[x[0]] < 30; }), score = Math.round(avg - low.length * 8);
+    var n = score >= 65 ? 3 : score >= 50 ? 2 : 1, best = score > save.best.dilemma; if (best) save.best.dilemma = score; addXP(score * 2);
+    openModal('<div class="big">' + stars(n) + "</div><h2 style='text-align:center'>Your term is over: city score " + score + "</h2>" + metersHtml(D.m) +
+      "<p>" + (low.length ? "⚠️ <b>" + low.map(function (x) { return x[1]; }).join(", ") + "</b> fell dangerously low. Leaders can't ignore any part of a city for long." : "You kept every area of the city healthy. Good balance!") + "</p>" +
+      "<p class='help'>Real leaders deal with tradeoffs like these every week. They listen to residents, experts and budget numbers before they decide. +" + (score * 2) + " XP</p>" +
+      '<div class="row"><button class="btn" onclick="startDilemma()">Another term</button><button class="btn alt" onclick="setMode(\'explore\')">Back to map</button></div>');
+  }
+
+  /* ---------- BUDGET LAB ---------- */
+  var B = null;
+  function startBudget() {
+    setMode("budget");
+    B = { year:0, events:shuffle(BUDGET_EVENTS).slice(0, 3), alloc:{}, rate:8, results:[] };
+    budgetYear();
+  }
+  function bNeeds() { var n = {}, ev = B.events[B.year]; BUDGET_CATS.forEach(function (c) { n[c.id] = c.need + (ev.need[c.id] || 0); }); return n; }
+  function bRevenue() { return B.rate * 12; }   // $ millions: each point of tax rate raises $12M
+  function budgetYear() {
+    BUDGET_CATS.forEach(function (c) { B.alloc[c.id] = 0; });
+    var ev = B.events[B.year];
+    var rows = BUDGET_CATS.map(function (c) {
+      return '<div class="meter" style="margin:8px 0"><div class="lbl"><span>' + c.name + '</span><span id="v-' + c.id + '"></span></div>' +
+        '<input type="range" min="0" max="60" value="0" style="width:100%" aria-label="' + c.name + '" oninput="budgetSet(\'' + c.id + '\', +this.value)">' +
+        '<div class="bar"><i id="b-' + c.id + '" style="width:0"></i></div></div>';
+    }).join("");
+    openModal("<h2>💰 Budget Lab — Year " + (B.year + 1) + "/3</h2><p><b>" + ev.t + "</b></p>" +
+      "<p class='help'>Set a tax rate, then split the money. Higher taxes raise more money but lower public trust. You can't spend more than you collect. (Amounts are in $ millions.)</p>" +
+      '<div class="meter"><div class="lbl"><span>Tax rate</span><span id="rate-v"></span></div><input type="range" min="4" max="14" value="' + B.rate + '" style="width:100%" aria-label="tax rate" oninput="budgetRate(+this.value)"></div>' +
+      rows + '<p><b id="left"></b></p>' +
+      '<div class="row"><button class="btn" id="bg-go" onclick="budgetDone()">Approve budget ✅</button><button class="btn alt" onclick="setMode(\'explore\')">Exit</button></div>');
+    budgetRefresh();
+  }
+  function bSpent() { return BUDGET_CATS.reduce(function (s, c) { return s + B.alloc[c.id]; }, 0); }
+  function budgetRate(v) { B.rate = v; budgetCap(); budgetRefresh(); }
+  function budgetCap() { var over = bSpent() - bRevenue(); BUDGET_CATS.forEach(function (c) { if (over > 0) { var t = Math.min(B.alloc[c.id], over); B.alloc[c.id] -= t; over -= t; } }); }
+  function budgetSet(id, v) { var others = bSpent() - B.alloc[id]; B.alloc[id] = Math.min(v, bRevenue() - others); budgetRefresh(); }
+  function budgetRefresh() {
+    var need = bNeeds(), inputs = document.querySelectorAll("#modal-box input[type=range]");
+    $("rate-v").textContent = B.rate + "%  →  $" + bRevenue() + "M collected  ·  trust " + (B.rate > 9 ? "↓" : "ok");
+    BUDGET_CATS.forEach(function (c, i) {
+      var pct = Math.min(1, B.alloc[c.id] / need[c.id]);
+      $("v-" + c.id).textContent = "$" + B.alloc[c.id] + "M  (needs " + need[c.id] + ")";
+      var bar = $("b-" + c.id); bar.style.width = pct * 100 + "%"; bar.style.background = pct >= 0.9 ? "var(--good)" : pct >= 0.6 ? "var(--warn)" : "var(--bad)";
+      inputs[i + 1].value = B.alloc[c.id];
+    });
+    inputs[0].value = B.rate;
+    var left = bRevenue() - bSpent(); $("left").textContent = "$" + left + "M left to spend" + (left > 0 ? " (unspent money goes to the reserve fund)" : "");
+  }
+  function budgetDone() {
+    var need = bNeeds(), tot = 0, worst = null, wp = 2;
+    BUDGET_CATS.forEach(function (c) { var p = Math.min(1, B.alloc[c.id] / need[c.id]); tot += p; if (p < wp) { wp = p; worst = c; } });
+    var service = tot / BUDGET_CATS.length * 100, taxPenalty = Math.max(0, B.rate - 8) * 6, reserve = Math.max(0, bRevenue() - bSpent());
+    var score = Math.round(Math.max(0, service - taxPenalty + Math.min(reserve, 10) * 0.5)); B.results.push(score);
+    var last = B.year === 2;
+    openModal("<h2>Year " + (B.year + 1) + " report</h2><div class='big'>" + (score >= 85 ? "😄" : score >= 65 ? "🙂" : "😟") + "</div>" +
+      "<h2 style='text-align:center'>Public approval: " + score + "%</h2>" +
+      "<p>Services met: <b>" + Math.round(service) + "%</b>" + (taxPenalty ? " · Tax backlash: <b>−" + taxPenalty + "</b>" : "") + (reserve ? " · Reserve saved: <b>$" + reserve + "M</b>" : "") + "</p>" +
+      "<p>" + (wp < 1 ? "Biggest gap: <b>" + worst.name + "</b> received " + Math.round(wp * 100) + "% of what it needed." : "Every service got what it needed.") + "</p>" +
+      "<p class='help'>Real budgets are public documents. Anyone can read one and speak at a budget hearing.</p>" +
+      '<div class="row"><button class="btn" onclick="' + (last ? "budgetEnd()" : "B.year++;budgetYear()") + '">' + (last ? "Final results" : "Next year ➜") + "</button></div>");
+  }
+  function budgetEnd() {
+    var avg = Math.round(B.results.reduce(function (a, b) { return a + b; }, 0) / B.results.length), n = avg >= 85 ? 3 : avg >= 68 ? 2 : 1, best = avg > save.best.budget;
+    if (best) save.best.budget = avg; addXP(avg * 2);
+    openModal('<div class="big">' + stars(n) + "</div><h2 style='text-align:center'>Average approval: " + avg + "%</h2><p style='text-align:center'>" + (best ? "🏆 New best! " : "Best: " + save.best.budget + "%. ") + "+" + avg * 2 + " XP</p>" +
+      '<div class="row" style="justify-content:center"><button class="btn" onclick="startBudget()">Try again</button><button class="btn alt" onclick="setMode(\'explore\')">Back to map</button></div>');
+  }
+
+  /* ---------- MAKE A LAW ---------- */
+  var LW = null;
+  function startLaw() {
+    setMode("law");
+    LW = { order:shuffle(LAW_STEPS.map(function (_, i) { return i; })), picked:[], wrong:0, checked:false };
+    lawRender();
+  }
+  function lawRender() {
+    var list = LW.order.map(function (si, i) {
+      var pos = LW.picked.indexOf(si);
+      return '<button class="opt ' + (pos >= 0 ? "picked" : "") + '" data-n="' + (pos >= 0 ? pos + 1 : "•") + '" ' + (LW.checked ? "disabled" : "") + ' onclick="lawPick(' + si + ')">' + LAW_STEPS[si].t + "</button>";
+    }).join("");
+    var result = "";
+    if (LW.checked) {
+      var ok = LW.picked.every(function (v, i) { return v === i; });
+      result = ok ? "<p style='color:var(--good);font-weight:700'>✅ Perfect order!</p>" : "<p style='color:var(--bad);font-weight:700'>Not quite. Here's the real order:</p>";
+      result += "<ol>" + LAW_STEPS.map(function (s) { return "<li><b>" + s.t + "</b><br><span class='help'>" + s.why + "</span></li>"; }).join("") + "</ol>";
+    }
+    openModal("<h2>📜 How a Local Law Becomes Real</h2><p class='help'>Tap the steps in the order they happen, from first to last. Tap again to undo your last pick.</p>" +
+      '<div class="order">' + list + "</div>" + result +
+      '<div class="row">' + (LW.checked ? '<button class="btn" onclick="startLaw()">Try again</button>' : '<button class="btn" ' + (LW.picked.length < LAW_STEPS.length ? "disabled" : "") + ' onclick="lawCheck()">Check my order</button>') +
+      '<button class="btn alt" onclick="setMode(\'explore\')">Exit</button></div>');
+  }
+  function lawPick(si) {
+    var p = LW.picked.indexOf(si);
+    if (p >= 0) { if (p === LW.picked.length - 1) LW.picked.pop(); } else LW.picked.push(si);
+    lawRender();
+  }
+  function lawCheck() {
+    LW.checked = true; var right = LW.picked.filter(function (v, i) { return v === i; }).length;
+    var sc = Math.round(right / LAW_STEPS.length * 100); if (sc > save.best.law) save.best.law = sc; addXP(sc);
+    lawRender(); toast(right + "/" + LAW_STEPS.length + " steps in the right place · +" + sc + " XP");
+  }
+
+  /* ---------- GOVERNMENTS ---------- */
+  function showGov() {
+    setMode("gov");
+    var rows = [
+      ["City / Town", "Mayor & city council", "Police, fire, parks, local roads, trash, zoning, permits"],
+      ["County", "County board / commissioners; sheriff; courts", "Courts, elections, public health, jails, property records"],
+      ["State", "Governor & state legislature", "Driver's licenses, state highways, public universities, education standards"],
+      ["Federal (national)", "President, Congress, Supreme Court", "Postal Service, national defense, passports, Social Security, money"]
+    ];
+    openModal("<h2>🏛️ Levels & Branches of Government</h2>" +
+      "<table class='lv'><tr><th>Level</th><th>Led by</th><th>Examples of what it does</th></tr>" + rows.map(function (r) { return "<tr><td><b>" + r[0] + "</b></td><td>" + r[1] + "</td><td>" + r[2] + "</td></tr>"; }).join("") + "</table>" +
+      "<h3>The three branches (at every level)</h3><div class='branch'>" +
+      "<div><b>Legislative: makes the laws</b>City council · State legislature · Congress<br><span class='link' onclick=\"setMode('explore');showCard('hall')\">🏛️ See City Hall</span></div>" +
+      "<div><b>Executive: carries them out</b>Mayor · Governor · President<br><span class='link' onclick=\"setMode('explore');showCard('police')\">🚓 See the police</span></div>" +
+      "<div><b>Judicial: interprets them</b>Local, state & federal courts<br><span class='link' onclick=\"setMode('explore');showCard('courthouse')\">⚖️ See the courthouse</span></div></div>" +
+      "<h3>Who's who in this city</h3>" + GROUPS.map(function (g) {
+        return "<p style='margin:4px 0'><b>" + g.name + ":</b> " + g.ids.map(function (id) { return "<span class='link' onclick=\"setMode('explore');showCard('" + id + "')\">" + byId[id].emoji + " " + byId[id].name + "</span>"; }).join(" · ") + "</p>";
+      }).join("") +
+      "<h3>The money loop</h3><p>Residents and businesses pay taxes and fees → the council sets a budget → departments deliver services → residents vote and give feedback → leaders adjust.</p>" +
+      '<div class="row"><button class="btn" onclick="setMode(\'explore\')">Back to map</button></div>');
+  }
+
+  /* ---------- modal helpers ---------- */
+  function openModal(html) { $("modal-box").innerHTML = html; $("modal").style.display = "flex"; }
+  function closeModal() { $("modal").style.display = "none"; }
+  $("modal").addEventListener("click", function (e) { if (e.target.id === "modal" && mode === "gov") setMode("explore"); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { if (mode === "explore") closeCard(); else setMode("explore"); } });
+  </script>
+</body>
+</html>
